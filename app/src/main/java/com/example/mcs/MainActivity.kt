@@ -1,33 +1,61 @@
 package com.example.mcs
 
-import android.R.attr.x
-import android.R.attr.y
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.bluetooth.le.*
 import android.content.Context
+import android.content.Intent
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
 import android.os.Bundle
+import android.os.ParcelUuid
 import android.util.Log
-import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import java.lang.Exception
+import java.util.*
 
 
+private const val SCAN_PERIOD: Long = 10000
+
+@RequiresApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
 class MainActivity : AppCompatActivity(), SensorEventListener {
 
     var sensorManager: SensorManager? = null;
-    var accSensor: Sensor? = null;
-    var captureXdata = true;
-    var startXTime: Long? = null;
+    var accSensor: Sensor? = null
+    var captureXdata = true
+    var startXTime: Long? = null
     private val maxVertical = 3.0
     private var mStartTime: Long = 0
-    private var isCounterUp = false;
+    private var isCounterUp = false
     private val SHAKE_THRESHOLD = 800
-    private var last_x: Float = 0f;
-    private var last_y: Float = 0f;
-    private var last_z: Float = 0f;
-    private var lastUpdate: Long = 0;
+    private var last_x: Float = 0f
+    private var last_y: Float = 0f
+    private var last_z: Float = 0f
+    private var lastUpdate: Long = 0
+    private var REQUEST_ENABLE_BT = 1
 
+    private var advertiser: BluetoothLeAdvertiser? = null
+
+    private var currentAdvertisingSet: AdvertisingSet? = null
+
+    private var advParams: AdvertisingSetParameters? = null;
+
+    private var advData: AdvertiseData? = null;
+
+    private var advCallback: AdvertisingSetCallback? = null;
+
+    private val bluetoothAdapter: BluetoothAdapter by lazy(LazyThreadSafetyMode.NONE) {
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bluetoothManager.adapter
+    }
+
+    // private var scanActivity: DeviceScanActivity? = null;
+
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -36,14 +64,74 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
         accSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        bluetoothAdapter.takeIf { it.isDisabled }?.apply {
+            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
+        }
+
+        // scanActivity = DeviceScanActivity(bluetoothAdapter, this);
+
+        if(!bluetoothAdapter.isDisabled) {
+          //  scanActivity!!.scanLeDevice(true);
+            advertiseSetup()
+        }
     }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun advertiseSetup() {
+        advertiser = bluetoothAdapter.bluetoothLeAdvertiser
+
+        advCallback = @RequiresApi(Build.VERSION_CODES.O)
+        object : AdvertisingSetCallback() {
+            override fun onAdvertisingSetStarted(
+                advertisingSet: AdvertisingSet,
+                txPower: Int,
+                status: Int
+            ) {
+                Log.i(
+                    "LOG", "onAdvertisingSetStarted(): txPower:" + txPower + " , status: "
+                            + status
+                )
+                currentAdvertisingSet = advertisingSet
+            }
+
+            override fun onAdvertisingDataSet(
+                advertisingSet: AdvertisingSet,
+                status: Int
+            ) {
+                Log.i("LOG", "onAdvertisingDataSet() :status:$status")
+            }
+
+            override fun onScanResponseDataSet(
+                advertisingSet: AdvertisingSet,
+                status: Int
+            ) {
+                Log.i("LOG", "onScanResponseDataSet(): status:$status")
+            }
+
+            override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet) {
+                Log.i("LOG", "onAdvertisingSetStopped():")
+            }
+        }
+
+        advParams = (AdvertisingSetParameters.Builder())
+            .setLegacyMode(true)
+            .setConnectable(true)
+            .setInterval(AdvertisingSetParameters.INTERVAL_HIGH)
+            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
+            .build()
+
+    }
+
+
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
     // TODO
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onSensorChanged(event: SensorEvent?) {
-
 
         if(event != null) {
 
@@ -74,6 +162,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         // ENVIAR 20%+
                     } else {
                         // ENVIAR 10%+
+                        val byteStream: ByteArray = byteArrayOf(0x1, 0x2, 0x3);
+
+                        advData = AdvertiseData.Builder().setIncludeDeviceName(true).addServiceData(
+                            ParcelUuid(UUID.randomUUID()), byteStream ).build()
+
+                        advertiser?.startAdvertisingSet(advParams, advData, null, null, null, advCallback);                        // ENVIAR 10%+
                     }
 
                 } else if (event.values[0] < -2) {
@@ -94,21 +188,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             // only allow one update every 100ms.
             if (curTime - lastUpdate > 100) {
 
-                var x = 0f;
-                var y = 0f;
-                var z = 0f;
-
                 val diffTime: Long = curTime - lastUpdate
                 lastUpdate = curTime
-                x = event.values[0]
-                y = event.values[1]
-                z = event.values[2]
+
+                var x: Float = event.values[0]
+                var y: Float = event.values[1]
+                var z: Float = event.values[2]
 
                 val speed: Float =
                     Math.abs(x + y + z - last_x - last_y - last_z) / diffTime * 10000
                 if (speed > SHAKE_THRESHOLD) {
                     // PRÓXIMA
-                    Log.d("XYZ", "PROXIMA")
+                   // Log.d("XYZ", "PROXIMA")
                 }
                 last_x = x
                 last_y = y
@@ -148,5 +239,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun getDiffTime(): Long {
         return getStartTime() - mStartTime
     }
+
+    private val BluetoothAdapter.isDisabled: Boolean
+        get() = !isEnabled
+
 
 }
