@@ -1,6 +1,7 @@
 package com.example.mcs
 
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.*
 import android.content.Context
@@ -38,24 +39,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var lastUpdate: Long = 0
     private var REQUEST_ENABLE_BT = 1
 
-    private var advertiser: BluetoothLeAdvertiser? = null
-
-    private var currentAdvertisingSet: AdvertisingSet? = null
-
-    private var advParams: AdvertisingSetParameters? = null;
-
-    private var advData: AdvertiseData? = null;
-
-    private var advCallback: AdvertisingSetCallback? = null;
-
     private val bluetoothAdapter: BluetoothAdapter by lazy(LazyThreadSafetyMode.NONE) {
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothManager.adapter
     }
 
-    // private var scanActivity: DeviceScanActivity? = null;
+    private var scanActivity: DeviceScanActivity? = null;
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -64,77 +54,37 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
         accSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        Log.d("SENSOR_CHANGED","IMPLEMENTANDO")
 
         bluetoothAdapter.takeIf { it.isDisabled }?.apply {
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
         }
 
-        // scanActivity = DeviceScanActivity(bluetoothAdapter, this);
+
+        scanActivity = DeviceScanActivity(bluetoothAdapter, this);
 
         if(!bluetoothAdapter.isDisabled) {
-          //  scanActivity!!.scanLeDevice(true);
-            advertiseSetup()
+           scanActivity!!.scanLeDevice(true);
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun advertiseSetup() {
-        advertiser = bluetoothAdapter.bluetoothLeAdvertiser
 
-        advCallback = @RequiresApi(Build.VERSION_CODES.O)
-        object : AdvertisingSetCallback() {
-            override fun onAdvertisingSetStarted(
-                advertisingSet: AdvertisingSet,
-                txPower: Int,
-                status: Int
-            ) {
-                Log.i(
-                    "LOG", "onAdvertisingSetStarted(): txPower:" + txPower + " , status: "
-                            + status
-                )
-                currentAdvertisingSet = advertisingSet
-            }
-
-            override fun onAdvertisingDataSet(
-                advertisingSet: AdvertisingSet,
-                status: Int
-            ) {
-                Log.i("LOG", "onAdvertisingDataSet() :status:$status")
-            }
-
-            override fun onScanResponseDataSet(
-                advertisingSet: AdvertisingSet,
-                status: Int
-            ) {
-                Log.i("LOG", "onScanResponseDataSet(): status:$status")
-            }
-
-            override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet) {
-                Log.i("LOG", "onAdvertisingSetStopped():")
-            }
-        }
-
-        advParams = (AdvertisingSetParameters.Builder())
-            .setLegacyMode(true)
-            .setConnectable(true)
-            .setInterval(AdvertisingSetParameters.INTERVAL_HIGH)
-            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
-            .build()
-
-    }
-
+private fun sendData(data: String) {
+    scanActivity?.char!!.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+    scanActivity?.char!!.setValue(data.toByteArray())
+    scanActivity?.bluetoothGatt?.writeCharacteristic(scanActivity?.char);
+}
 
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
     // TODO
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun onSensorChanged(event: SensorEvent?) {
-
-        if(event != null) {
-
+        Log.d("SENSOR_CHANGED","SENSOR_CHANGED")
+        if(event != null && scanActivity?.char != null && scanActivity!!.isConnected) {
+            Log.d("SENSOR_CHANGED","ENTROU ONDE DEVIA")
             if(startXTime != null && System.currentTimeMillis() - startXTime!! >  1500 && !captureXdata) {
                 captureXdata = true;
                 // Log.d("PODE:", "já pode voltar a capturar X")
@@ -149,6 +99,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         // Log.d("Y", "Anterior");
                         isCounterUp = false;
                         // ENVIA ANTERIOR
+                        sendData("prev");
                     }
                 }
             }
@@ -160,14 +111,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     //Log.d("X", "Direita " + event.values[0].toString())
                     if(event.values[0] > 4) {
                         // ENVIAR 20%+
+                        sendData("vup20");
                     } else {
                         // ENVIAR 10%+
-                        val byteStream: ByteArray = byteArrayOf(0x1, 0x2, 0x3);
-
-                        advData = AdvertiseData.Builder().setIncludeDeviceName(true).addServiceData(
-                            ParcelUuid(UUID.randomUUID()), byteStream ).build()
-
-                        advertiser?.startAdvertisingSet(advParams, advData, null, null, null, advCallback);                        // ENVIAR 10%+
+                        sendData("vup10");
+                      // ENVIAR 10%+
                     }
 
                 } else if (event.values[0] < -2) {
@@ -177,7 +125,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
                     if(event.values[0] < -4) {
                         // ENVIAR 20%-
+                        sendData("vdwn20");
+
                     } else {
+                        sendData("vdwn10");
                         // ENVIAR 10%-
                     }
                 }
@@ -200,6 +151,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 if (speed > SHAKE_THRESHOLD) {
                     // PRÓXIMA
                    // Log.d("XYZ", "PROXIMA")
+                    sendData("next");
                 }
                 last_x = x
                 last_y = y
