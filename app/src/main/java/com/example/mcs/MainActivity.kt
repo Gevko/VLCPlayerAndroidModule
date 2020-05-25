@@ -17,6 +17,8 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import java.lang.Exception
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.*
 
 
@@ -56,24 +58,33 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         accSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         Log.d("SENSOR_CHANGED","IMPLEMENTANDO")
 
-        bluetoothAdapter.takeIf { it.isDisabled }?.apply {
+       /* bluetoothAdapter.takeIf { it.isDisabled }?.apply {
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT)
-        }
+        } */
 
 
-        scanActivity = DeviceScanActivity(bluetoothAdapter, this);
+        // scanActivity = DeviceScanActivity(bluetoothAdapter, this);
 
         if(!bluetoothAdapter.isDisabled) {
-           scanActivity!!.scanLeDevice(true);
+            // scanActivity!!.scanLeDevice(true);
         }
     }
 
 
 private fun sendData(data: String) {
-    scanActivity?.char!!.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+   /* scanActivity?.char!!.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
     scanActivity?.char!!.setValue(data.toByteArray())
-    scanActivity?.bluetoothGatt?.writeCharacteristic(scanActivity?.char);
+    scanActivity?.bluetoothGatt?.writeCharacteristic(scanActivity?.char); */
+
+    val url = URL("http://4a3f8692.ngrok.io/?command=$data");
+
+    with(url.openConnection() as HttpURLConnection) {
+        requestMethod = "GET"
+
+        Log.d("GET_CONNECTION", "CONNECTION_DONE")
+    }
+
 }
 
 
@@ -111,10 +122,10 @@ private fun sendData(data: String) {
                     //Log.d("X", "Direita " + event.values[0].toString())
                     if(event.values[0] > 4) {
                         // ENVIAR 20%+
-                        sendData("vup20");
+                        sendData(10.toString());
                     } else {
                         // ENVIAR 10%+
-                        sendData("vup10");
+                        sendData(5.toString());
                       // ENVIAR 10%+
                     }
 
@@ -125,10 +136,10 @@ private fun sendData(data: String) {
 
                     if(event.values[0] < -4) {
                         // ENVIAR 20%-
-                        sendData("vdwn20");
+                        sendData((-10).toString());
 
                     } else {
-                        sendData("vdwn10");
+                        sendData((-5).toString());
                         // ENVIAR 10%-
                     }
                 }
