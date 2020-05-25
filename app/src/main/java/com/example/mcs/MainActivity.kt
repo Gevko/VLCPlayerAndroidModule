@@ -10,6 +10,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.AsyncTask
 import android.os.Build
 import android.os.Bundle
 import android.os.ParcelUuid
@@ -31,7 +32,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     var accSensor: Sensor? = null
     var captureXdata = true
     var startXTime: Long? = null
-    private val maxVertical = 3.0
     private var mStartTime: Long = 0
     private var isCounterUp = false
     private val SHAKE_THRESHOLD = 800
@@ -56,7 +56,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
         accSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        Log.d("SENSOR_CHANGED","IMPLEMENTANDO")
 
        /* bluetoothAdapter.takeIf { it.isDisabled }?.apply {
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
@@ -76,29 +75,53 @@ private fun sendData(data: String) {
    /* scanActivity?.char!!.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
     scanActivity?.char!!.setValue(data.toByteArray())
     scanActivity?.bluetoothGatt?.writeCharacteristic(scanActivity?.char); */
+    Log.d("COMMAND_", data)
 
-    val url = URL("http://4a3f8692.ngrok.io/?command=$data");
+   val url = "http://4a3f8692.ngrok.io/?command=$data";
+//val url = "https://ooleklelele1.requestcatcher.com/test"
+    AsyncTaskHandleJson().execute(url)
 
-    with(url.openConnection() as HttpURLConnection) {
+
+  /* with(url.openConnection() as HttpURLConnection) {
         requestMethod = "GET"
 
         Log.d("GET_CONNECTION", "CONNECTION_DONE")
-    }
+    }*/
 
 }
 
+    inner class AsyncTaskHandleJson: AsyncTask<String, String, String>() {
+        override fun doInBackground(vararg params: String?): String {
+            var text: String = ""
+            val conn = URL(params[0]).openConnection() as HttpURLConnection
+
+            try {
+                conn.connect()
+                text = conn.inputStream.use {
+                    it.reader().use{reader -> reader.readText()}
+                }
+            } catch (e: Exception) {
+                Log.d("COMMAND_", e.toString())
+            }
+            /*finally {
+                conn.disconnect()
+            }*/
+
+            Log.d("COMMAND_", conn.responseCode.toString());
+            Log.d("COMMAND_", conn.responseMessage)
+            return text;
+
+        }
+    }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
     // TODO
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        Log.d("SENSOR_CHANGED","SENSOR_CHANGED")
-        if(event != null && scanActivity?.char != null && scanActivity!!.isConnected) {
-            Log.d("SENSOR_CHANGED","ENTROU ONDE DEVIA")
+        if(event != null) {
             if(startXTime != null && System.currentTimeMillis() - startXTime!! >  1500 && !captureXdata) {
                 captureXdata = true;
-                // Log.d("PODE:", "já pode voltar a capturar X")
             }
 
             if(isPhoneVertical(event)) {
@@ -106,7 +129,7 @@ private fun sendData(data: String) {
                     mStartTime = getStartTime();
                     isCounterUp = true;
                 } else {
-                    if(getDiffTime() > 1500) {
+                    if(getDiffTime() > 10000) {
                         // Log.d("Y", "Anterior");
                         isCounterUp = false;
                         // ENVIA ANTERIOR
@@ -119,9 +142,9 @@ private fun sendData(data: String) {
                 if(event.values[0] > 2) {
                     captureXdata = false;
                     startXTime = System.currentTimeMillis();
-                    //Log.d("X", "Direita " + event.values[0].toString())
                     if(event.values[0] > 4) {
                         // ENVIAR 20%+
+
                         sendData(10.toString());
                     } else {
                         // ENVIAR 10%+
@@ -132,13 +155,14 @@ private fun sendData(data: String) {
                 } else if (event.values[0] < -2) {
                     captureXdata = false;
                     startXTime = System.currentTimeMillis();
-                    // Log.d("X", "Esquerda " + event.values[0].toString())
 
                     if(event.values[0] < -4) {
                         // ENVIAR 20%-
+
                         sendData((-10).toString());
 
                     } else {
+
                         sendData((-5).toString());
                         // ENVIAR 10%-
                     }
@@ -162,6 +186,7 @@ private fun sendData(data: String) {
                 if (speed > SHAKE_THRESHOLD) {
                     // PRÓXIMA
                    // Log.d("XYZ", "PROXIMA")
+
                     sendData("next");
                 }
                 last_x = x
@@ -191,8 +216,8 @@ private fun sendData(data: String) {
         val y = values[1].toDouble()
         // do not change this value
         val yAxisInitValue = 1.5
-        val verMargin: Double = yAxisInitValue - maxVertical
-        return y >= verMargin
+
+        return y >= yAxisInitValue
     }
 
     private fun getStartTime(): Long {
